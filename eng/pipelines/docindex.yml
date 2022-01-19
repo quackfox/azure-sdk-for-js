@@ -40,6 +40,16 @@ jobs:
         displayName: Update Docs Onboarding
         condition: and(succeeded(), or(eq(variables['Build.Reason'], 'Schedule'), eq(variables['Force.MainUpdate'], 'true')))
 
+      - task: Powershell@2
+        inputs:
+          pwsh: true
+          filePath: eng/common/scripts/Update-DocsMsToc.ps1
+          arguments: >-
+            -DocRepoLocation $(DocRepoLocation)
+            -OutputLocation $(DocRepoLocation)/docs-ref-mapping/reference-unified.yml
+        displayName: Generate ToC
+        condition: and(succeeded(), or(eq(variables['Build.Reason'], 'Schedule'), eq(variables['Force.MainUpdate'], 'true')))
+
       # Push changes to docs repo
       - template: /eng/common/pipelines/templates/steps/set-default-branch.yml
         parameters:
@@ -60,7 +70,7 @@ jobs:
           DailyBranchVariableName: DailyDocsBranchName
       - pwsh: |
           $ErrorActionPreference = "Continue"
-          git checkout "origin/$(DailyDocsBranchName)" 2>&1 | Out-Null
+          git checkout "origin/$(DailyDocsBranchName)-toc-test" 2>&1 | Out-Null
           $LASTEXITCODE = 0 # This ignores any error from git checkout
           git status
         displayName: Checkout daily branch if it exists
@@ -71,6 +81,15 @@ jobs:
           filePath: eng/common/scripts/Update-DocsMsPackages.ps1
           arguments: -DocRepoLocation $(DocRepoLocation)
         displayName: Update Docs Onboarding for Daily branch
+
+      - task: Powershell@2
+        inputs:
+          pwsh: true
+          filePath: eng/common/scripts/Update-DocsMsToc.ps1
+          arguments: >-
+            -DocRepoLocation $(DocRepoLocation)
+            -OutputLocation $(DocRepoLocation)/docs-ref-mapping/reference-unified.yml
+        displayName: Generate ToC
 
       - template: /eng/common/pipelines/templates/steps/git-push-changes.yml
         parameters:
