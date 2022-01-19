@@ -22,6 +22,7 @@ jobs:
             - ci-configs/packages-preview.json
             - ci-configs/packages-legacy.json
             - metadata/
+            - docs-ref-mapping/
           Repositories:
             - Name: $(DocRepoOwner)/$(DocRepoName)
               WorkingDirectory: $(DocRepoLocation)
