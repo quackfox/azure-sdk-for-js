@@ -21,14 +21,21 @@ function Get-javascript-OnboardedDocsMsPackages($DocRepoLocation) {
 }
 
 function Get-javascript-DocsMsTocData($packageMetadata, $docRepoLocation) {
+  # Fallback to get package-level readme name if metadata file info does not exist
   $packageLevelReadmeName = $packageMetadata.Package.Replace('@azure/', '').Replace('@azure-tools/', '').Replace('azure-', '');
 
+  # Fallback to get package-level readme name if metadata file info does not exist
   if ($packageMetadata.Package.StartsWith('@azure-rest/')) {
     $packageLevelReadmeName = "$($packageMetadata.Package.Replace('@azure-rest/', ''))-rest"
-
-    # TODO: Consider using metadata in doc repo /metadata folder to get
-    # DirectoryPath. Do not use DirectoryPath from metadata CSV
   }
+
+  # If there is a metadata json for the package use the DocsMsReadmeName from
+  # the metadata function
+  if ($packageMetadata.FileMetadata) {
+    $readmeMetadata = &$GetDocsMsMetadataForPackageFn -PackageInfo $packageMetadata.FileMetadata
+    $packageLevelReadmeName = $readmeMetadata.DocsMsReadMeName
+  }
+
 
   $packageTocHeader = $packageMetadata.Package
   if ($clientPackage.DisplayName) {

@@ -44,7 +44,7 @@ param(
 Install-ModuleIfNotInstalled "powershell-yaml" "0.4.1" | Import-Module
 
 function GetClientPackageNode($clientPackage) {
-  $packageInfo = &$GetDocsMsTocData `
+  $packageInfo = &$GetDocsMsTocDataFn `
     -packageMetadata $clientPackage `
     -docRepoLocation $DocRepoLocation
 
@@ -56,7 +56,57 @@ function GetClientPackageNode($clientPackage) {
   };
 }
 
-$onboardedPackages = &$GetOnboardedDocsMsPackages `
+# TODO: Move this function elsewhere in eng/common:
+function GetPackageKey($pkg) {
+  $pkgKey = $pkg.Package
+  $groupId = $null
+
+  if ($pkg.PSObject.Members.Name -contains "GroupId") {
+    $groupId = $pkg.GroupId
+  }
+
+  if ($groupId) {
+    $pkgKey = "${groupId}:${pkgKey}"
+  }
+
+  return $pkgKey
+}
+
+# TODO: Move this function elsewhere in eng/common:
+function GetPackageLookup($packageList) {
+  $packageLookup = @{}
+
+  foreach ($pkg in $packageList) {
+    $pkgKey = GetPackageKey $pkg
+
+    # We want to prefer updating non-hidden packages but if there is only
+    # a hidden entry then we will return that
+    if (!$packageLookup.ContainsKey($pkgKey) -or $packageLookup[$pkgKey].Hide -eq "true") {
+      $packageLookup[$pkgKey] = $pkg
+    }
+    else {
+      # Warn if there are more then one non-hidden package
+      if ($pkg.Hide -ne "true") {
+        Write-Host "Found more than one package entry for $($pkg.Package) selecting the first non-hidden one."
+      }
+    }
+
+    if ($pkg.PSObject.Members.Name -contains "GroupId" -and ($pkg.New -eq "true") -and $pkg.Package) {
+      $pkgKey = $pkg.Package
+      if (!$packageLookup.ContainsKey($pkgKey)) {
+        $packageLookup[$pkgKey] = $pkg
+      }
+      else {
+        $packageValue = $packageLookup[$pkgKey]
+        Write-Host "Found more than one package entry for $($packageValue.Package) selecting the first one with groupId $($packageValue.GroupId), skipping $($pkg.GroupId)"
+      }
+    }
+  }
+
+  return $packageLookup
+}
+
+$onboardedPackages = &$GetOnboardedDocsMsPackagesFn `
   -DocRepoLocation $DocRepoLocation
 
 # This criteria is different from criteria used in `Update-DocsMsPackages.ps1`
@@ -69,34 +119,52 @@ $metadata = (Get-CSVMetadata).Where({
       -and $_.Hide -ne 'true'
   })
 
-# Map metadata to package. Validate metadata entries.
+$fileMetadata = @()
+foreach ($metadataFile in Get-ChildItem "$DocRepoLocation/metadata/*/*.json" -Recurse) {
+  $fileContent = Get-Content $metadataFile -Raw
+  $metadataEntry = ConvertFrom-Json $fileContent
+
+  if ($metadataEntry) {
+    $fileMetadata += $metadataEntry
+  }
+}
+
+# Add file metadata information to package metadata from metadata CSV. Because
+# metadata can exist for packages in both preview and GA there may be more than
+# one file metadata entry. If that is the case keep the first entry found. We
+# only use the `DirectoryPath` property from the json file metadata at this time
+for ($i = 0; $i -lt $metadata.Count; $i++) {
+  foreach ($fileEntry in $fileMetadata) {
+    if ($fileEntry.Name -eq $metadata[$i].Package) {
+      if ($metadata[$i].PSObject.Members.Name -contains "FileMetadata") {
+        Write-Host "File metadata already added for $($metadata[$i].Package). Keeping the first entry found."
+    continue
+  }
+
+      Add-Member `
+        -InputObject $metadata[$i] `
+        -MemberType NoteProperty `
+        -Name FileMetadata `
+        -Value $fileEntry
+  }
+  }
+}
+
 $packagesForToc = @{}
-foreach ($packageName in $onboardedPackages.Keys) {
-  $metadataEntry = $metadata.Where({ $_.Package -eq $packageName })
-
-  if (!$metadataEntry) {
-    LogWarning "Could not find metadata for package $packageName. Skipping"
-    continue
-  }
-  if ($metadataEntry -is [System.Collections.IEnumerable] -and ($metadataEntry | Measure-Object).Count -gt 1) {
-    LogWarning "Duplicate metadata for package $packageName. Using the entry which appears first in metadata CSV file."
-  }
-  $metadataEntry = $metadataEntry[0]
-
+foreach ($metadataEntry in (GetPackageLookup $metadata).Values) {
   if (!$metadataEntry.ServiceName) {
-    LogWarning "Empty ServiceName for package $packageName. Skipping."
+    LogWarning "Empty ServiceName for package `"$($metadataEntry.Package)`". Skipping."
     continue
   }
-
-  $packagesForToc[$packageName] = $metadataEntry
+  $packagesForToc[$metadataEntry.Package] = $metadataEntry
 }
 
 # Get unique service names and sort alphabetically to act as the service nodes
 # in the ToC
 $services = @{}
 foreach ($package in $packagesForToc.Values) {
-  if ($package.ServiceName -eq 'Core') {
-    # Skip packages under the service category "Core". Those will be handled
+  if ($package.ServiceName -eq 'Other') {
+    # Skip packages under the service category "Other". Those will be handled
     # later
     continue
   }
@@ -115,7 +183,7 @@ foreach ($service in $serviceNameList) {
   $packageCount = 0
 
   # Client packages get individual entries
-  $clientPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq $service -and (@('client', '') -contains $_.Type) })
+  $clientPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq $service -and ('client' -eq $_.Type) })
   $clientPackages = $clientPackages | Sort-Object -Property Package
   if ($clientPackages) {
     foreach ($clientPackage in $clientPackages) {
@@ -129,7 +197,7 @@ foreach ($service in $serviceNameList) {
   $mgmtPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq $service -and ('mgmt' -eq $_.Type) })
   $mgmtPackages = $mgmtPackages | Sort-Object -Property Package
   if ($mgmtPackages) {
-    $children = &$GetDocsMsTocChildrenForManagementPackages `
+    $children = &$GetDocsMsTocChildrenForManagementPackagesFn `
       -packageMetadata $mgmtPackages `
       -docRepoLocation $DocRepoLocation
 
@@ -154,28 +222,26 @@ foreach ($service in $serviceNameList) {
 }
 
 # Core packages belong under the "Other" node in the ToC
-$corePackageItems = @()
-$corePackages = $packagesForToc.Values.Where({ $_.ServiceName -eq 'Core' })
-$corePackages = $corePackages | Sort-Object -Property Package
+$otherPackageItems = @()
+$otherPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq 'Other' })
+$otherPackages = $otherPackages | Sort-Object -Property Package
 
-if ($corePackages) {
-  foreach ($corePackage in $corePackages) {
-    $corePackageItems += GetClientPackageNode $corePackage
+if ($otherPackages) {
+  foreach ($otherPackage in $otherPackages) {
+    $otherPackageItems += GetClientPackageNode $otherPackage
   }
 }
 
 $toc += [PSCustomObject]@{
   name            = 'Other';
   landingPageType = 'Service';
-  items           = @(
-    [PSCustomObject]@{
-      name            = 'Core';
-      landingPageType = 'Service';
-      items           = $corePackageItems;
-    },
+  items           = $otherPackageItems + @(
     [PSCustomObject]@{
       name            = "Uncategorized Packages";
       landingPageType = 'Service';
+      # All onboarded packages which have not been placed in the ToC will be
+      # handled by the docs system here. In this case the list would consist of
+      # packages whose ServiceName field is empty in the metadata.
       children        = @('**');
     }
   )
