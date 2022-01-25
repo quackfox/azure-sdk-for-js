@@ -53,28 +53,3 @@ function Get-javascript-DocsMsTocData($packageMetadata, $docRepoLocation) {
 function Get-javascript-DocsMsTocChildrenForManagementPackages($packageMetadata, $docRepoLocation) {
   return @($packageMetadata.Package)
 }
-
-# TODO: This somehow stuffs the items on the same level as the Reference in
-# the reuslting ToC yaml which breaks subsequent steps.
-# function Update-javascript-DocsMsToc($toc) {
-#   foreach ($node in $toc.items) {
-#     if ($node.name -eq 'Identity') {
-#       $node.items += @(
-#         [PSCustomObject]@{
-#           name            = 'Token Cache Persistence'
-#           uid             = 'azure.nodejs.sdk.landingpage.services.identity.cachepersistence'
-#           href            = '~/docs-ref-services/{moniker}/identity-cache-persistence-readme.md'
-#           landingPageType = 'Service'
-#         },
-#         [PSCustomObject]@{
-#           name            = 'VSCode Authentication'
-#           uid             = 'azure.nodejs.sdk.landingpage.services.identity.vscode'
-#           href            = '~/docs-ref-services/{moniker}/identity-vscode-readme.md'
-#           landingPageType = 'Service'
-#         }
-#       )
-#     }
-#   }
-
-#   return $toc
-# }
