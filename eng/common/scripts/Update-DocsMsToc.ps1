@@ -38,6 +38,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string] $OutputLocation
 )
+Set-StrictMode -Version 3
 . $PSScriptRoot/common.ps1
 . $PSScriptRoot/Helpers/PSModule-Helpers.ps1
 
@@ -56,7 +57,6 @@ function GetClientPackageNode($clientPackage) {
   };
 }
 
-# TODO: Move this function elsewhere in eng/common:
 function GetPackageKey($pkg) {
   $pkgKey = $pkg.Package
   $groupId = $null
@@ -72,7 +72,6 @@ function GetPackageKey($pkg) {
   return $pkgKey
 }
 
-# TODO: Move this function elsewhere in eng/common:
 function GetPackageLookup($packageList) {
   $packageLookup = @{}
 
@@ -138,15 +137,15 @@ for ($i = 0; $i -lt $metadata.Count; $i++) {
     if ($fileEntry.Name -eq $metadata[$i].Package) {
       if ($metadata[$i].PSObject.Members.Name -contains "FileMetadata") {
         Write-Host "File metadata already added for $($metadata[$i].Package). Keeping the first entry found."
-    continue
-  }
+        continue
+      }
 
       Add-Member `
         -InputObject $metadata[$i] `
         -MemberType NoteProperty `
         -Name FileMetadata `
         -Value $fileEntry
-  }
+    }
   }
 }
 
@@ -180,7 +179,6 @@ foreach ($service in $serviceNameList) {
   Write-Host "Building service: $service"
 
   $packageItems = @()
-  $packageCount = 0
 
   # Client packages get individual entries
   $clientPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq $service -and ('client' -eq $_.Type) })
@@ -188,7 +186,6 @@ foreach ($service in $serviceNameList) {
   if ($clientPackages) {
     foreach ($clientPackage in $clientPackages) {
       $packageItems += GetClientPackageNode -clientPackage $clientPackage
-      $packageCount += 1
     }
   }
 
@@ -207,7 +204,6 @@ foreach ($service in $serviceNameList) {
       # even if it is a single package
       children = @($children)
     };
-    $packageCount += 1
   }
 
   $serviceReadmeBaseName = $service.ToLower().Replace(' ', '-')
