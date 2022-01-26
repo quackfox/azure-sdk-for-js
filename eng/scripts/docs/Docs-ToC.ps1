@@ -31,7 +31,7 @@ function Get-javascript-DocsMsTocData($packageMetadata, $docRepoLocation) {
 
   # If there is a metadata json for the package use the DocsMsReadmeName from
   # the metadata function
-  if ($packageMetadata.FileMetadata) {
+  if ($packageMetadata.PSObject.Members.Name -contains "FileMetadata") {
     $readmeMetadata = &$GetDocsMsMetadataForPackageFn -PackageInfo $packageMetadata.FileMetadata
     $packageLevelReadmeName = $readmeMetadata.DocsMsReadMeName
   }
