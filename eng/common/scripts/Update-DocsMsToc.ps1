@@ -206,6 +206,13 @@ foreach ($service in $serviceNameList) {
     };
   }
 
+  $uncategorizedPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq $service -and !(@('client', 'mgmt') -contains $_.Type) })
+  if ($uncategorizedPackages) {
+    foreach ($package in $uncategorizedPackages) {
+      LogWarning "Uncategorized package for service: $service - $($package.Package). Package not onboarded."
+    }
+  }
+
   $serviceReadmeBaseName = $service.ToLower().Replace(' ', '-')
   $serviceTocEntry = [PSCustomObject]@{
     name            = $service;
@@ -218,13 +225,48 @@ foreach ($service in $serviceNameList) {
 }
 
 # Core packages belong under the "Other" node in the ToC
-$otherPackageItems = @()
+$otherPackageItems = New-Object -TypeName System.Collections.Generic.List[PSCustomObject]
 $otherPackages = $packagesForToc.Values.Where({ $_.ServiceName -eq 'Other' })
-$otherPackages = $otherPackages | Sort-Object -Property Package
+$otherPackages = $otherPackages | Sort-Object -Property DisplayName
 
 if ($otherPackages) {
   foreach ($otherPackage in $otherPackages) {
-    $otherPackageItems += GetClientPackageNode $otherPackage
+    $segments = $otherPackage.DisplayName.Split(' - ')
+
+    if ($segments.Count -gt 1) {
+      $currentNode = $otherPackageItems
+      foreach ($segment in $segments[0..($segments.Count - 2)]) {
+        $matchingNode = $currentNode.Where({ $_.name -eq $segment })
+
+        if ($matchingNode -and $matchingNode.PSObject.Members.Name -contains "children") {
+          LogWarning "Cannot create nested entry for package $($otherPackage.Package) because Segment `"$segment`" in the DisplayName $($otherPackage.DisplayName) is already a leaf node. Excluding package: $($otherPackage.Package)"
+          $currentNode = $null
+          break
+        }
+
+        if ($matchingNode) {
+          $currentNode = $matchingNode[0].items
+        }
+        else {
+          $newNode = [PSCustomObject]@{
+            name            = $segment
+            landingPageType = 'Service'
+            items           = New-Object -TypeName System.Collections.Generic.List[PSCustomObject]
+          }
+          $currentNode.Add($newNode)
+          $currentNode = $newNode.items
+        }
+      }
+
+      if ($null -ne $currentNode) {
+        $otherPackage.DisplayName = $segments[$segments.Count - 1]
+        $currentNode.Add((GetClientPackageNode $otherPackage))
+      }
+
+    }
+    else {
+      $otherPackageItems.Add((GetClientPackageNode $otherPackage))
+    }
   }
 }
 
