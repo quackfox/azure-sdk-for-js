@@ -53,3 +53,36 @@ function Get-javascript-DocsMsTocData($packageMetadata, $docRepoLocation) {
 function Get-javascript-DocsMsTocChildrenForManagementPackages($packageMetadata, $docRepoLocation) {
   return @($packageMetadata.Package)
 }
+
+function Get-javascript-UpdatedDocsMsToc($toc) {
+  $items = $toc[0].items
+  for ($i = 0; $i -lt $items.Count; $i++) {
+
+    # Add "Plugin" docs to Identity. Packages associated with these entries do
+    # not build successfully in the docs CI system becaues they export nothing
+    # that the docs CI system can document. This ensures that the readme pages
+    # are documented properly even if their packages are not onboarded.
+    if ($items[$i].name -eq 'Identity') {
+      $items[$i].items += [PSCustomObject]@{
+        name  = "Plugins";
+        items = @(
+          [PSCustomObject]@{
+            name            = "Token Cache Persistence";
+            href            = "~/docs-ref-services/{moniker}/identity-cache-persistence-readme.md";
+            landingPageType = "Service";
+          },
+          [PSCustomObject]@{
+            name            = "VSCode Authentication";
+            href            = "~/docs-ref-services/{moniker}/identity-vscode-readme.md";
+            landingPageType = "Service";
+          }
+        )
+      }
+    }
+  }
+
+  # PowerShell outputs a single object if the output is an array with only one
+  # object. The preceeding comma ensures that the output remains an array for
+  # appropriate export formatting.
+  return , $toc
+}
