@@ -231,13 +231,26 @@ $otherPackages = $otherPackages | Sort-Object -Property DisplayName
 
 if ($otherPackages) {
   foreach ($otherPackage in $otherPackages) {
-    $segments = $otherPackage.DisplayName.Split(' - ')
+    $segments = $otherPackage.DisplayName.Split('-').ForEach({ $_.Trim() })
+
 
     if ($segments.Count -gt 1) {
       $currentNode = $otherPackageItems
+
+      # Iterate up to the penultimate item in the array so that the final item
+      # in the array can be added as a leaf node. Since the array always has at
+      # least two elements this iteration will cover at least the first element.
+      # e.g. @(0, 1)[0..0] => 0
       foreach ($segment in $segments[0..($segments.Count - 2)]) {
         $matchingNode = $currentNode.Where({ $_.name -eq $segment })
 
+        # ToC nodes can be "branches" which contain 0 or more branch
+        # or leaf nodes in an "items" field OR they can be leaf nodes which have
+        # a "children" field which can only contain package names or namespaces.
+        # A node cannot contain both "items" and "children". If a node already
+        # has a "children" field then it is a leaf node and cannot take
+        # additional branch nodes.
+        # Children are added using the `GetClientPackageNode` function
         if ($matchingNode -and $matchingNode.PSObject.Members.Name -contains "children") {
           LogWarning "Cannot create nested entry for package $($otherPackage.Package) because Segment `"$segment`" in the DisplayName $($otherPackage.DisplayName) is already a leaf node. Excluding package: $($otherPackage.Package)"
           $currentNode = $null
